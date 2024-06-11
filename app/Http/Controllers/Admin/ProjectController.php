@@ -1,0 +1,178 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use App\Models\Project;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
+use App\Models\Type;
+use App\Models\Technology;
+
+class ProjectController extends Controller
+{
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function index()
+    {
+        $projects= Project::all();
+        $technologies = Technology::all();
+    
+        return view('admin.projects.index', compact('projects','technologies'));
+    }
+
+    /**
+     * Show the form for creating a new resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function create()
+    {    
+        $types= Type::all();
+        $technologies = Technology::all();
+        return view('admin.projects.create', compact('types','technologies'));
+    }
+
+    /**
+     * Store a newly created resource in storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
+    public function store(Request $request)
+    { 
+        $formData = $request->all();
+        $validatedData = $this->validateProjectData($request);
+
+        if($request->hasFile('cover_image')) {
+            $img_path = Storage::disk('public')->put('projects_img',$formData['cover_image']);
+            $formData['cover_image'] =  $img_path;
+        };
+        $newProject = new Project();
+        $newProject->slug = Str::slug($formData['name'],'-');
+        $newProject->fill($formData);
+    
+        
+        $newProject->save();
+        if($request->has('technologies')) {
+            $newProject->technologies()->attach($formData['technologies']);
+        }
+
+        return redirect()->route('admin.projects.show', ['project' => $newProject->id]);
+    }
+
+    /**
+     * Display the specified resource.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function show($id)
+    {
+        $project= Project::findOrFail($id);
+
+        return view('admin.projects.show', compact('project') );
+    }
+
+    /**
+     * Show the form for editing the specified resource.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function edit($id)
+    {
+        $project= Project::findOrFail($id);
+        $types= Type::all();
+        $technologies = Technology::all();
+
+
+        return view('admin.projects.edit', compact('project','types','technologies') );
+    }
+
+    /**
+     * Update the specified resource in storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function update(Request $request, $id)
+    {
+        $validatedData = $this->validateProjectDataUpdate($request);
+        $project = Project::findOrFail($id);
+        $formData = $request->all();
+    
+        if ($request->hasFile('cover_image')) {
+            // Rimuovi l'immagine vecchia se esiste
+            if ($project->cover_image) {
+                Storage::disk('public')->delete($project->cover_image);
+            }
+            // Carica la nuova immagine
+            $img_path = Storage::disk('public')->put('projects_img', $formData['cover_image']);
+            $formData['cover_image'] = $img_path;
+        }
+    
+        // Genera lo slug dal nome del progetto
+        $formData['slug'] = Str::slug($formData['name'], '-');
+    
+        // Aggiorna il progetto con i nuovi dati
+        $project->update($formData);
+
+        if($request->has('technologies')) {
+            $project->technologies()->sync($formData['technologies']);
+        }
+    
+        return redirect()->route('admin.projects.show', ['project' => $project->id]);
+    }
+
+    /**
+     * Remove the specified resource from storage.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function destroy($id)
+    {
+        $project=Project::findOrFail($id);
+        $project->delete();
+        return redirect()->route('admin.projects.index');
+    }
+
+    private function validateProjectData(Request $request)
+    {
+        return $request->validate([
+            'name' => 'required|string|max:255|unique:projects,name',
+            'client_name' => 'required|string',
+            'summary' => 'nullable|string', 
+            'type_id' => 'nullable|exists:types,id',
+        ], [
+            'name.required'=> 'Il campo nome è obbligatorio.',
+            'name.min' => 'Il nome deve contenere almeno 5 caratteri.',
+            'name.unique' => 'il nome del progetto è gia presente ',
+            'name.max' => 'Il nome non può superare i 15 caratteri.',
+            'client_name.required'=> 'Il campo nome cliente è obbligatorio.',
+            'summary.string' => 'Il campo sommario deve essere una stringa.', 
+        ]);
+    }
+
+    private function validateProjectDataUpdate(Request $request)
+    {
+        return $request->validate([
+            'name' => 'required|string|max:255|',
+            'client_name' => 'required|string',
+            'summary' => 'nullable|string', 
+            'type_id' => 'nullable|exists:types,id',
+        ], [
+            'name.required'=> 'Il campo nome è obbligatorio.',
+            'name.min' => 'Il nome deve contenere almeno 5 caratteri.',
+            'name.max' => 'Il nome non può superare i 15 caratteri.',
+            'client_name.required'=> 'Il campo nome cliente è obbligatorio.',
+            'summary.string' => 'Il campo sommario deve essere una stringa.', 
+        ]);
+    }
+}    
